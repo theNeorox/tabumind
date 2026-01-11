@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<title>TabuMind</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="favicon.ico" type="image/x-icon">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="site.webmanifest">
+<meta name="theme-color" content="#6366f1">
+
+<style>
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #0f172a;
+    color: #f1f5f9;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100svh;
+}
+
+.app {
+    width: 100%;
+    max-width: 420px;
+    padding: 20px;
+}
+
+h1 { text-align: center; }
+
+button {
+    width: 100%;
+    padding: 14px;
+    margin: 8px 0;
+    border: none;
+    border-radius: 10px;
+    background: #6366f1;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+.secondary { background: #334155; }
+
+.screen { display: none; }
+.active { display: block; }
+
+.problem {
+    font-size: 36px;
+    text-align: center;
+    margin: 30px 0;
+}
+
+#answer {
+    width: 100%;
+    padding: 12px;
+    border-radius: 8px;
+    border: none;
+    font-size: 20px;
+    text-align: center;
+}
+
+input[type="radio"],
+input[type="checkbox"] {
+    width: auto;
+}
+
+.stats {
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    margin-top: 10px;
+    opacity: 0.8;
+}
+
+.feedback {
+    text-align: center;
+    min-height: 24px;
+    margin-top: 8px;
+}
+
+.green { color: #22c55e; }
+.red { color: #ef4444; }
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px;
+    text-align: center;
+}
+
+.grid label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+</style>
+</head>
+
+<body>
+<div class="app">
+
+<!-- HOME -->
+<div id="home" class="screen active">
+<center>
+  <img src="./images/icon.png" 
+       alt="TabuMind Logo" 
+       width="180"
+       height="180"
+       style="border-radius: 20%;">
+</center>
+<h1>TabuMind - Treine sua Tabuada!</h1>
+<button onclick="openSettings('free')">Treino Livre</button>
+<button onclick="openSettings('challenge')">Desafio</button>
+</div>
+
+<!-- SETTINGS -->
+<div id="settings" class="screen">
+<h1>Configuração</h1>
+
+<p><strong>Operação:</strong></p>
+<label><input type="radio" name="op" value="+" checked> Soma</label><br>
+<label><input type="radio" name="op" value="-"> Subtração</label><br>
+<label><input type="radio" name="op" value="*"> Multiplicação</label><br>
+<label><input type="radio" name="op" value="/"> Divisão</label><br>
+
+<p><strong>Tabuadas:</strong></p>
+<div class="grid" id="tables"></div>
+
+<button onclick="startGame()">Iniciar</button>
+<button class="secondary" onclick="goHome()">Voltar</button>
+</div>
+
+<!-- GAME -->
+<div id="game" class="screen">
+<h1 id="modeTitle">Treino</h1>
+
+<div id="progress" class="stats"></div>
+
+<div id="problem" class="problem">0 + 0</div>
+
+<input 
+  id="answer"
+  type="tel"
+  inputmode="numeric"
+  pattern="[0-9]*"
+  placeholder="Resposta"
+/>
+
+<button onclick="checkAnswer()">Confirmar</button>
+
+<div id="feedback" class="feedback"></div>
+
+<div class="stats">
+  <div>Acertos: <span id="correct">0</span></div>
+  <div>Erros: <span id="wrong">0</span></div>
+  <div>Sequência: <span id="streak">0</span></div>
+</div>
+
+<button class="secondary" onclick="goHome()">Sair</button>
+</div>
+
+<!-- RESULT -->
+<div id="result" class="screen">
+<h1>Resultado</h1>
+<p>Total: <strong id="totalQ"></strong></p>
+<p>Acertos: <strong id="finalCorrect"></strong></p>
+<p>Erros: <strong id="finalWrong"></strong></p>
+<p>Pontuação: <strong id="score"></strong></p>
+
+<button onclick="goHome()">Voltar ao início</button>
+</div>
+
+</div>
+
+<script>
+// ✅ REGISTRO DO SERVICE WORKER (uma única vez)
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("./sw.js");
+}
+
+// ✅ REFERÊNCIAS CORRETAS DOS ELEMENTOS
+const screens = {
+    home: document.getElementById("home"),
+    settings: document.getElementById("settings"),
+    game: document.getElementById("game"),
+    result: document.getElementById("result")
+};
+
+function showScreen(name) {
+    Object.values(screens).forEach(s => s.classList.remove("active"));
+    screens[name].classList.add("active");
+}
+
+const tablesDiv = document.getElementById("tables");
+const problem = document.getElementById("problem");
+const answer = document.getElementById("answer");
+const feedback = document.getElementById("feedback");
+const progress = document.getElementById("progress");
+const modeTitle = document.getElementById("modeTitle");
+
+const correctSpan = document.getElementById("correct");
+const wrongSpan = document.getElementById("wrong");
+const streakSpan = document.getElementById("streak");
+
+const totalQSpan = document.getElementById("totalQ");
+const finalCorrectSpan = document.getElementById("finalCorrect");
+const finalWrongSpan = document.getElementById("finalWrong");
+const scoreSpan = document.getElementById("score");
+
+let selectedTables = [];
+let operation = "+";
+let currentAnswer = 0;
+let correct = 0;
+let wrong = 0;
+let streak = 0;
+let mode = "free";
+let questionCount = 0;
+const TOTAL_QUESTIONS = 20;
+let lastProblemText = "";
+
+// ✅ CRIA TABUADAS
+for (let i = 1; i <= 10; i++) {
+    tablesDiv.innerHTML += `
+        <label>
+            <input type="checkbox" value="${i}"> ${i}
+        </label>
+    `;
+}
+
+function openSettings(selectedMode) {
+    mode = selectedMode;
+    showScreen("settings");
+}
+
+function goHome() {
+    showScreen("home");
+}
+
+function startGame() {
+    selectedTables = Array.from(
+        document.querySelectorAll("#tables input:checked")
+    ).map(el => Number(el.value));
+
+    if (!selectedTables.length) {
+        alert("Selecione pelo menos uma tabuada.");
+        return;
+    }
+
+    operation = document.querySelector("input[name=op]:checked").value;
+
+    correct = wrong = streak = questionCount = 0;
+    lastProblemText = "";
+
+    modeTitle.innerText = mode === "free" ? "Treino Livre" : "Desafio";
+    showScreen("game");
+    generateProblem();
+}
+
+function randomItem(arr) {
+    return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function generateProblem() {
+    if (mode === "challenge") {
+        progress.innerText = `Pergunta ${questionCount + 1} / ${TOTAL_QUESTIONS}`;
+    } else {
+        progress.innerText = "";
+    }
+
+    let newProblem = "";
+    let tries = 0;
+
+    do {
+        const base = randomItem(selectedTables);
+        const factor = Math.floor(Math.random() * 10) + 1;
+
+        if (operation === "+") {
+            currentAnswer = base + factor;
+            newProblem = `${base} + ${factor}`;
+        }
+
+        if (operation === "-") {
+            const a = Math.max(base, factor);
+            const b = Math.min(base, factor);
+            currentAnswer = a - b;
+            newProblem = `${a} - ${b}`;
+        }
+
+        if (operation === "*") {
+            currentAnswer = base * factor;
+            newProblem = `${base} × ${factor}`;
+        }
+
+        if (operation === "/") {
+            const result = base * factor;
+            currentAnswer = factor;
+            newProblem = `${result} ÷ ${base}`;
+        }
+
+        tries++;
+    } while (newProblem === lastProblemText && tries < 10);
+
+    lastProblemText = newProblem;
+    problem.innerText = newProblem;
+
+    answer.value = "";
+    setTimeout(() => answer.focus(), 200);
+}
+
+function checkAnswer() {
+    if (!answer.value) return;
+    const value = Number(answer.value);
+
+    if (value === currentAnswer) {
+        correct++;
+        streak++;
+        feedback.innerHTML = "<span class='green'>✔ Correto</span>";
+    } else {
+        wrong++;
+        streak = 0;
+        feedback.innerHTML = `<span class='red'>✖ ${currentAnswer}</span>`;
+    }
+
+    correctSpan.innerText = correct;
+    wrongSpan.innerText = wrong;
+    streakSpan.innerText = streak;
+
+    questionCount++;
+    answer.blur();
+
+    setTimeout(() => {
+        feedback.innerHTML = "";
+        if (mode === "challenge" && questionCount >= TOTAL_QUESTIONS) {
+            showResult();
+        } else {
+            generateProblem();
+        }
+    }, 1200);
+}
+
+function showResult() {
+    totalQSpan.innerText = TOTAL_QUESTIONS;
+    finalCorrectSpan.innerText = correct;
+    finalWrongSpan.innerText = wrong;
+    scoreSpan.innerText = correct * 10;
+    showScreen("result");
+}
+
+answer.addEventListener("keydown", function(e) {
+    if (e.key === "Enter") {
+        checkAnswer();
+    }
+});
+</script>
+
+</body>
+</html>
